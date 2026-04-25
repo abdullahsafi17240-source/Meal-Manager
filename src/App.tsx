@@ -107,47 +107,6 @@ export default function App() {
     fetchUser();
   }, []);
 
-  const fetchUser = async () => {
-    try {
-      const res = await fetch('/api/auth/me', { credentials: 'include' });
-      if (res.ok) {
-        const data = await res.json();
-        setUser(data.user);
-        setView('dashboard');
-        fetchMeals();
-        if (data.user.role === 'admin') fetchAdminSummary();
-      }
-    } catch (err) {
-      console.error("Auth check failed", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchMeals = async () => {
-    try {
-      const res = await fetch('/api/meals', { credentials: 'include' });
-      if (res.ok) {
-        const data = await res.json();
-        setMeals(data);
-      }
-    } catch (err) {
-      console.error("Fetch meals failed");
-    }
-  };
-
-  const fetchAdminSummary = async () => {
-    try {
-      const res = await fetch('/api/admin/summary', { credentials: 'include' });
-      if (res.ok) {
-        const data = await res.json();
-        setAdminSummary(data);
-      }
-    } catch (err) {
-      console.error("Fetch admin summary failed");
-    }
-  };
-
   const login = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
@@ -164,6 +123,8 @@ export default function App() {
       });
       const data = await res.json();
       if (res.ok) {
+        // Backup token if returned directly (updating backend to do this)
+        if (data.token) localStorage.setItem('token', data.token);
         setUser(data.user);
         setView('dashboard');
         fetchMeals();
@@ -204,19 +165,70 @@ export default function App() {
   };
 
   const logout = async () => {
+    localStorage.removeItem('token');
     await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
     setUser(null);
     setView('login');
   };
 
+  const authenticatedFetch = (url: string, options: any = {}) => {
+    const token = localStorage.getItem('token');
+    const headers = {
+      ...options.headers,
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    };
+    return fetch(url, { ...options, headers, credentials: 'include' });
+  };
+
+  const fetchUser = async () => {
+    try {
+      const res = await authenticatedFetch('/api/auth/me');
+      if (res.ok) {
+        const data = await res.json();
+        setUser(data.user);
+        setView('dashboard');
+        fetchMeals();
+        if (data.user.role === 'admin') fetchAdminSummary();
+      }
+    } catch (err) {
+      console.error("Auth check failed", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchMeals = async () => {
+    try {
+      const res = await authenticatedFetch('/api/meals');
+      if (res.ok) {
+        const data = await res.json();
+        setMeals(data);
+      }
+    } catch (err) {
+      console.error("Fetch meals failed");
+    }
+  };
+
+  const fetchAdminSummary = async () => {
+    try {
+      const res = await authenticatedFetch('/api/admin/summary');
+      if (res.ok) {
+        const data = await res.json();
+        setAdminSummary(data);
+      }
+    } catch (err) {
+      console.error("Fetch admin summary failed");
+    }
+  };
+
   const markMeal = async (mealType: 'Lunch' | 'Dinner') => {
     setError(null);
+    setSuccess(null);
     const date = format(new Date(), 'yyyy-MM-dd');
     try {
-      const res = await fetch('/api/meals/mark', {
+      const res = await authenticatedFetch('/api/meals/mark', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ mealType, date })
       });
       const data = await res.json();
@@ -234,10 +246,9 @@ export default function App() {
 
   const updateSettings = async (lunchPrice: number, dinnerPrice: number) => {
     try {
-      const res = await fetch('/api/admin/settings', {
+      const res = await authenticatedFetch('/api/admin/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ lunchPrice, dinnerPrice })
       });
       if (res.ok) {

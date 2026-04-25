@@ -5,6 +5,7 @@ import fs from 'fs';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import cookieParser from 'cookie-parser';
+import cors from 'cors';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -34,6 +35,10 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  app.use(cors({
+    origin: true, // Reflect request origin
+    credentials: true
+  }));
   app.use(express.json());
   app.use(cookieParser());
 
@@ -41,9 +46,17 @@ async function startServer() {
 
   // Auth Middleware
   const authenticate = (req: any, res: any, next: any) => {
-    const token = req.cookies.token;
+    let token = req.cookies.token;
+
+    // Fallback to Authorization Header
+    if (!token && req.headers.authorization) {
+      if (req.headers.authorization.startsWith('Bearer ')) {
+        token = req.headers.authorization.split(' ')[1];
+      }
+    }
+
     if (!token) {
-      console.log("Auth failed: No token found in cookies");
+      console.log("Auth failed: No token found in cookies or Authorization header");
       return res.status(401).json({ error: 'Unauthorized' });
     }
     try {
@@ -102,7 +115,7 @@ async function startServer() {
       path: '/'
     });
     console.log(`Login successful for: ${email}`);
-    res.json({ user: { id: user.id, email: user.email, role: user.role, name: user.name } });
+    res.json({ token, user: { id: user.id, email: user.email, role: user.role, name: user.name } });
   });
 
   app.post('/api/auth/logout', (req, res) => {
